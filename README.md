@@ -22,12 +22,17 @@ This MCP server connects to the Quartr API to provide access to:
 
 Install using Homebrew:
 ```bash
+# First, tap the repository
+brew tap gaarutyunov/quartr
+
 # Install from source (requires Node.js)
 brew install quartr-mcp-server
 
 # Or install binary version (no Node.js required)
 brew install quartr-mcp-server-bin
 ```
+
+> **Note**: Currently formulas are in the main repository. For production, they will be moved to a separate tap repository `homebrew-quartr`. See [HOMEBREW_SETUP.md](HOMEBREW_SETUP.md) for details.
 
 ### Option 2: Pre-built Binaries
 

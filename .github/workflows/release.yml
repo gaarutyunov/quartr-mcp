@@ -26,11 +26,20 @@ jobs:
     - name: Build executables
       run: npm run build:exe
     
+    - name: Generate checksums
+      run: |
+        cd exe
+        shasum -a 256 index-linux > index-linux.sha256
+        shasum -a 256 index-macos > index-macos.sha256
+        shasum -a 256 index-win.exe > index-win.exe.sha256
+    
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: executables
-        path: exe/
+        path: |
+          exe/
+          !exe/*.sha256
     
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -39,7 +48,10 @@ jobs:
           exe/index-linux
           exe/index-macos
           exe/index-win.exe
+          exe/*.sha256
         generate_release_notes: true
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,42 +64,62 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        # Checkout the tap repository if you have one
+        repository: gaarutyunov/homebrew-quartr
+        token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     
     - name: Extract version
       id: version
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
     
     - name: Wait for release assets
-      run: sleep 30
+      run: sleep 60
+    
+    - name: Calculate checksums
+      id: checksums
+      run: |
+        # Get URLs for the release assets
+        SOURCE_URL="https://github.com/${{ github.repository }}/archive/${{ github.ref_name }}.tar.gz"
+        MACOS_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/index-macos"
+        LINUX_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/index-linux"
+        
+        # Calculate checksums
+        SOURCE_SHA=$(curl -sL "$SOURCE_URL" | shasum -a 256 | cut -d' ' -f1)
+        MACOS_SHA=$(curl -sL "$MACOS_URL" | shasum -a 256 | cut -d' ' -f1)
+        LINUX_SHA=$(curl -sL "$LINUX_URL" | shasum -a 256 | cut -d' ' -f1)
+        
+        echo "SOURCE_SHA=$SOURCE_SHA" >> $GITHUB_OUTPUT
+        echo "MACOS_SHA=$MACOS_SHA" >> $GITHUB_OUTPUT
+        echo "LINUX_SHA=$LINUX_SHA" >> $GITHUB_OUTPUT
+        echo "SOURCE_URL=$SOURCE_URL" >> $GITHUB_OUTPUT
+        echo "MACOS_URL=$MACOS_URL" >> $GITHUB_OUTPUT
+        echo "LINUX_URL=$LINUX_URL" >> $GITHUB_OUTPUT
     
     - name: Update Homebrew formulas
       run: |
         # Update source-based formula
-        SOURCE_URL="https://github.com/${{ github.repository }}/archive/${{ github.ref_name }}.tar.gz"
-        SOURCE_SHA=$(curl -sL "$SOURCE_URL" | shasum -a 256 | cut -d' ' -f1)
+        sed -i "s|url \".*archive.*\"|url \"${{ steps.checksums.outputs.SOURCE_URL }}\"|" Formula/quartr-mcp-server.rb
+        sed -i "s/sha256 \".*\"/sha256 \"${{ steps.checksums.outputs.SOURCE_SHA }}\"/" Formula/quartr-mcp-server.rb
         
-        # Update binary formulas
-        MACOS_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/index-macos"
-        LINUX_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/index-linux"
-        
-        MACOS_SHA=$(curl -sL "$MACOS_URL" | shasum -a 256 | cut -d' ' -f1)
-        LINUX_SHA=$(curl -sL "$LINUX_URL" | shasum -a 256 | cut -d' ' -f1)
-        
-        # Update formulas
+        # Update binary formula version
         sed -i "s/version \".*\"/version \"${{ steps.version.outputs.VERSION }}\"/" Formula/quartr-mcp-server-bin.rb
-        sed -i "s|url \".*archive.*\"|url \"$SOURCE_URL\"|" Formula/quartr-mcp-server.rb
-        sed -i "s/sha256 \".*\"/sha256 \"$SOURCE_SHA\"/" Formula/quartr-mcp-server.rb
         
-        # Update binary formula
-        sed -i "s|url \".*index-macos\"|url \"$MACOS_URL\"|" Formula/quartr-mcp-server-bin.rb
-        sed -i "s|url \".*index-linux\"|url \"$LINUX_URL\"|" Formula/quartr-mcp-server-bin.rb
-        sed -i "/on_macos/,/end/ s/sha256 \".*\"/sha256 \"$MACOS_SHA\"/" Formula/quartr-mcp-server-bin.rb
-        sed -i "/on_linux/,/end/ s/sha256 \".*\"/sha256 \"$LINUX_SHA\"/" Formula/quartr-mcp-server-bin.rb
+        # Update binary formula URLs
+        sed -i "s|url \".*index-macos\"|url \"${{ steps.checksums.outputs.MACOS_URL }}\"|" Formula/quartr-mcp-server-bin.rb
+        sed -i "s|url \".*index-linux\"|url \"${{ steps.checksums.outputs.LINUX_URL }}\"|" Formula/quartr-mcp-server-bin.rb
+        
+        # Update binary formula checksums
+        sed -i "/on_macos/,/end/ s/sha256 \".*\"/sha256 \"${{ steps.checksums.outputs.MACOS_SHA }}\"/" Formula/quartr-mcp-server-bin.rb
+        sed -i "/on_linux/,/end/ s/sha256 \".*\"/sha256 \"${{ steps.checksums.outputs.LINUX_SHA }}\"/" Formula/quartr-mcp-server-bin.rb
     
     - name: Commit updated formulas
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add Formula/
-        git commit -m "Update Homebrew formulas for version ${{ steps.version.outputs.VERSION }}" || exit 0
-        git push
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update Homebrew formulas for version ${{ steps.version.outputs.VERSION }}"
+          git push
+        fi

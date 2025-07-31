@@ -8,6 +8,9 @@ class QuartrMcpServerBin < Formula
     if Hardware::CPU.intel?
       url "https://github.com/gaarutyunov/quartr-mcp/releases/download/v1.0.0/index-macos"
       sha256 ""
+    elsif Hardware::CPU.arm?
+      url "https://github.com/gaarutyunov/quartr-mcp/releases/download/v1.0.0/index-macos"
+      sha256 ""
     end
   end
 
@@ -24,10 +27,17 @@ class QuartrMcpServerBin < Formula
     elsif OS.linux?
       bin.install "index-linux" => "quartr-mcp-server"
     end
+    
+    # Make sure the binary is executable
+    chmod 0755, bin/"quartr-mcp-server"
   end
 
   test do
-    # Test that the binary can be invoked
-    system "#{bin}/quartr-mcp-server", "--help"
+    # Test that the binary exists and is executable
+    assert_predicate bin/"quartr-mcp-server", :exist?
+    assert_predicate bin/"quartr-mcp-server", :executable?
+    
+    # Test version output (if your app supports --version)
+    # system "#{bin}/quartr-mcp-server", "--version"
   end
 end

@@ -35,15 +35,42 @@ import {
   SlidePagesArgsSchema,
 } from './tools.js';
 
+// Handle version and help flags
+const args = process.argv.slice(2);
+if (args.includes('--version') || args.includes('-v')) {
+  const pkg = require('../package.json');
+  console.log(pkg.version);
+  process.exit(0);
+}
+
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+Quartr MCP Server v${require('../package.json').version}
+
+Usage: quartr-mcp-server [options]
+
+Options:
+  -v, --version     Show version number
+  -h, --help        Show help
+
+Environment Variables:
+  QUARTR_API_KEY    Your Quartr API key (required)
+
+For more information, visit: https://github.com/gaarutyunov/quartr-mcp
+  `);
+  process.exit(0);
+}
+
 class QuartrMCPServer {
   private server: Server;
   private quartrClient: QuartrAPIClient;
 
   constructor() {
+    const pkg = require('../package.json');
     this.server = new Server(
       {
         name: 'quartr-mcp-server',
-        version: '1.0.0',
+        version: pkg.version,
       },
       {
         capabilities: {
